@@ -1,53 +1,73 @@
 ﻿using Bokhandel.Models;
 using Bokhandel.Services;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 namespace Bokhandel.Services
 {
     internal class Program
     {
         static async Task Main(string[] args)
         {
-            var db = new BokhandelContext();
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+                .AddUserSecrets<Program>()
+                .Build();
 
-            var inventoryService = new InventoryService(db);
-            var bookService = new BookService(db);
-            var authorService = new AuthorService(db);
-            //var publisherService = new PublisherService(db);
+            //ServiceCollection.AddSinggleton<IConfiguration>(configuration);
+            var serviceCollection = new ServiceCollection();
+            serviceCollection.AddDbContext<BokhandelContext>(options =>
+                options.UseSqlServer(configuration.GetConnectionString("BokhandelDatabase")));
 
+            serviceCollection.AddTransient<InventoryService>();
+            serviceCollection.AddTransient<BookService>();
+            serviceCollection.AddTransient<AuthorService>();
 
-            while (true)
+            using var serviceProvider = serviceCollection.BuildServiceProvider();
+
+            using(var scope = serviceProvider.CreateScope())
             {
-                Console.Clear();
-                Console.WriteLine("===BOOKSTORE MAIN MENU===");
-                Console.WriteLine("1.Inventory Management");
-                Console.WriteLine("2.Book Management");
-                Console.WriteLine("3.Author Management");
-                Console.WriteLine("0.Exit");
-                Console.Write("Choose option: ");
+                var provider = scope.ServiceProvider;
 
-                var choice = Console.ReadLine();
-                switch (choice)
+                var inventoryService = provider.GetRequiredService<InventoryService>();
+                var bookService = provider.GetRequiredService<BookService>();
+                var authorService = provider.GetRequiredService<AuthorService>();
+                while (true)
                 {
-                    case "1":
-                       await InventoryMenu(inventoryService);
-                        break;
-                    case "2":
-                       await BookMenu(bookService,authorService);
-                        break;
-                    case "3":
-                       await AuthorMenu(authorService);
-                        break;
-                    case "0":
+                    Console.Clear();
+                    Console.WriteLine("===BOOKSTORE MAIN MENU===");
+                    Console.WriteLine("1.Inventory Management");
+                    Console.WriteLine("2.Book Management");
+                    Console.WriteLine("3.Author Management");
+                    Console.WriteLine("0.Exit");
+                    Console.Write("Choose option: ");
 
-                        return;
-                    default:
-                        Console.WriteLine("Invalid option!");
-                        Console.ReadKey();
-                        break;
+                    var choice = Console.ReadLine();
+                    switch (choice)
+                    {
+                        case "1":
+                            await InventoryMenu(inventoryService, bookService, authorService);
+                            break;
+                        case "2":
+                            await BookMenu(bookService, authorService);
+                            break;
+                        case "3":
+                            await AuthorMenu(authorService);
+                            break;
+                        case "0":
+
+                            return;
+                        default:
+                            Console.WriteLine("Invalid option!");
+                            Console.ReadKey();
+                            break;
+                    }
                 }
             }
         }
-        public static async Task InventoryMenu(InventoryService inventoryService)
+        public static async Task InventoryMenu(InventoryService inventoryService,BookService bookService, AuthorService authorService)
         {
             int? selectedStoreId = null;
             while (true)
@@ -65,7 +85,7 @@ namespace Bokhandel.Services
                         selectedStoreId = await SelectedStoreId(inventoryService);
                         if(selectedStoreId != null)
                         {
-                            await InventoryStoreMenu(inventoryService, selectedStoreId.Value);
+                            await InventoryStoreMenu(inventoryService,bookService,authorService, selectedStoreId.Value);
                         }
                         
                         break;
@@ -79,14 +99,14 @@ namespace Bokhandel.Services
                 }
             }
         }
-        public static async Task InventoryStoreMenu(InventoryService inventoryService, int storeId)
+        public static async Task InventoryStoreMenu(InventoryService inventoryService, BookService bookService,AuthorService authorService, int storeId)
         {
             while (true)
             {
                 Console.Clear();
                 Console.WriteLine($"=== INVENTORY MANAGEMENT FOR STORE {storeId} ===");
                 Console.WriteLine("1.List Inventory");
-                Console.WriteLine("2.Add Book to Store(Restock)");
+                Console.WriteLine("2.Add Book to Store");
                 Console.WriteLine("3.Remove Book from Store");
                 Console.WriteLine("4.Move Book to Another Store");
                 Console.WriteLine("0.Back to Previous Menu");
@@ -100,7 +120,7 @@ namespace Bokhandel.Services
                         break;
                     case "2":
                        
-                        await inventoryService.AddBookToStore(storeId);
+                        await inventoryService.AddBookToStore(storeId,bookService,authorService);
                         Console.ReadKey();
                         break;
                     case "3":

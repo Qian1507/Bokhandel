@@ -36,22 +36,34 @@ namespace Bokhandel.Services
                 Console.WriteLine($"{b.Isbn13} | {b.Title} | {b.Author.FirstName} {b.Author.LastName} | Price: {b.Price} | Pages: {b.Pages}");
             }
         }
-        public async Task AddNewBook(AuthorService authorService)
+        public async Task AddNewBook(AuthorService authorService,string preFilledIsbn=null)
         {
             Console.WriteLine("\n=== Add New Book ===");
-
-            Console.Write("Enter ISBN(13 chars): ");
-            string? isbn= Console.ReadLine()?.Trim();
-            if (string.IsNullOrWhiteSpace(isbn) || isbn.Length != 13)
+            string? isbn;
+            if(!string.IsNullOrWhiteSpace(preFilledIsbn))
             {
-                Console.WriteLine("Invalid ISBN");
-                return;
+                isbn = preFilledIsbn;
+                Console.WriteLine($"Using pre-filled ISBN: {isbn}");
             }
-            var existingBook = await _db.Books.FindAsync(isbn);
-            if (existingBook != null)
+            else
             {
-                Console.WriteLine("A book with this ISBN already exists.");
-                return;
+                while (true)
+                {
+                    Console.Write("Enter ISBN(13 chars): ");
+                    isbn= Console.ReadLine()?.Trim();
+                    if (!string.IsNullOrWhiteSpace(isbn) && isbn.Length == 13)
+                    {
+                        break;
+                    }
+                    Console.WriteLine("Invalid ISBN. Please enter a 13-character ISBN.");
+                }
+                   
+                var existingBook = await _db.Books.FindAsync(isbn);
+                if (existingBook != null)
+                {
+                    Console.WriteLine("A book with this ISBN already exists.");
+                    return;
+                }
             }
             Console.Write("Enter Title: ");
             string? title= Console.ReadLine()?.Trim();
@@ -87,12 +99,29 @@ namespace Bokhandel.Services
             }
             Console.WriteLine("\nSelect an author:");
             await authorService.ListAllAuthors();
-            Console.Write("Enter Author ID: ");
-            if(!int.TryParse(Console.ReadLine(), out int authorId) || !await _db.Authors.AnyAsync(a => a.AuthorId == authorId))
+            Console.WriteLine("------------------------");
+            Console.Write("Enter Author ID(or 0 to create a New author): ");
+            string? authorInput= Console.ReadLine()?.Trim();
+            int authorId;
+            if(authorInput == "0")
             {
-                Console.WriteLine("Invalid Author ID.");
-                return;
+                var newAuthorId = await authorService.AddAuthor();
+                if(newAuthorId == null)
+                {
+                    Console.WriteLine("Author creation cancelled. Cannot continue adding book.");
+                    return;
+                }
+                authorId = newAuthorId.Value;
             }
+            else
+            {
+                if(!int.TryParse(authorInput, out authorId) || !await _db.Authors.AnyAsync(a => a.AuthorId == authorId))
+                {
+                    Console.WriteLine("Invalid Author ID.");
+                    return;
+                }
+            }
+          
             var book = new Book
             {
                 Isbn13 = isbn,
@@ -105,7 +134,7 @@ namespace Bokhandel.Services
             };
             _db.Books.Add(book);
             await _db.SaveChangesAsync();
-            Console.WriteLine($"Book '{title}' added successfully.");
+            Console.WriteLine($"Book '{book.Title}' added successfully.");
 
         }
         public async Task EditBook(AuthorService authorService)

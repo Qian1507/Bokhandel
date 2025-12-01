@@ -30,27 +30,27 @@ namespace Bokhandel.Services
                 Console.WriteLine($"{a.AuthorId}: {a.FirstName} {a.LastName} (Born: {a.Birthday:yyyy-MM-dd})");
             }
         }
-        public async Task AddAuthor()
+        public async Task<int?> AddAuthor()
         {
             Console.Write("Enter first name: ");
             string? firstName = Console.ReadLine()?.Trim();
             if (string.IsNullOrEmpty(firstName))
             {
                 Console.WriteLine("First name cannot be empty.");
-                return;
+                return null;
             }
             Console.Write("Enter last name: ");
             string? lastName = Console.ReadLine()?.Trim();
             if (string.IsNullOrEmpty(lastName))
             {
                 Console.WriteLine("Last name cannot be empty.");
-                return;
+                return null;
             }
             Console.Write("Enter birthday (yyyy-MM-dd): ");
             if (!DateTime.TryParse(Console.ReadLine(), out DateTime birthday))
             {
                 Console.WriteLine("Invalid date format.");
-                return;
+                return null;
             }
             var exists = await _db.Authors
                             .AnyAsync(a =>
@@ -61,7 +61,7 @@ namespace Bokhandel.Services
             if (exists)
             {
                 Console.WriteLine("This author already exists in the database.");
-                return;
+                return null;
             }
             var author = new Author
             {
@@ -73,6 +73,7 @@ namespace Bokhandel.Services
             _db.Authors.Add(author);
             await _db.SaveChangesAsync();
             Console.WriteLine($"Author {firstName} {lastName} added successfully.");
+            return author.AuthorId;
         }
 
         public async Task EditAuthor()

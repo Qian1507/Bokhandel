@@ -15,40 +15,141 @@ namespace Bokhandel.Services
         {
             _db = db;
         }
-        private async Task<string?> SelecteBookISBN()
+        private async Task<string?> SelecteBookISBN(int? storeId = null)
         {
-            var books = await _db.Books.ToListAsync();
+            List<Book> books;
 
-            if(!books.Any())
+            if (storeId.HasValue)
             {
-                Console.WriteLine("No books available.");
+                // 1. Get valid ISBNs for this store first
+                var validIsbns = await _db.Inventories
+                    .Where(i => i.StoreId == storeId.Value && i.Quantity > 0)
+                    .Select(i => i.Isbn13)
+                    .Distinct()
+                    .ToListAsync();
+
+                // 2. Fetch full book details including Inventory data for display
+                books = await _db.Books
+                    .Where(b => validIsbns.Contains(b.Isbn13))
+                    .Include(b => b.Inventories)
+                    .ToListAsync();
+            }
+            else
+            {
+                // Fetch all books from the library
+                books = await _db.Books
+                    .Include(b => b.Inventories)
+                    .ToListAsync();
+            }
+
+            if (!books.Any())
+            {
+                Console.WriteLine(storeId.HasValue
+                    ? "No books in stock for this store."
+                    : "No books available in the library.");
                 return null;
             }
+
             while (true)
             {
-                Console.WriteLine("Available books:");
+                Console.WriteLine(storeId.HasValue
+                    ? $"\n=== Available Stock in Store {storeId} ==="
+                    : "\n=== All Available Titles ===");
+
                 foreach (var book in books)
                 {
-                    Console.WriteLine($"{book.Isbn13} - {book.Title}");
+                    string stockInfo = "";
+                    if (storeId.HasValue)
+                    {
+                        // Show specific store stock
+                        int qty = book.Inventories
+                            .FirstOrDefault(i => i.StoreId == storeId.Value)?.Quantity ?? 0;
+                        stockInfo = $" [Stock: {qty}]";
+                    }
+                    else
+                    {
+                        // Show total stock across all stores
+                        int totalQty = book.Inventories.Sum(i => i.Quantity);
+                        stockInfo = $" [Total System Stock: {totalQty}]";
+                    }
+
+                    Console.WriteLine($"{book.Isbn13} - {book.Title}{stockInfo}");
                 }
+
                 Console.Write("Enter ISBN: ");
                 var isbn = Console.ReadLine()?.Trim();
-
 
                 if (string.IsNullOrWhiteSpace(isbn))
                 {
                     Console.WriteLine("ISBN cannot be empty. Please try again.");
                     continue;
                 }
+
                 if (!books.Any(b => b.Isbn13 == isbn))
                 {
-                    Console.WriteLine("Book not found. Please try again.");
+                    Console.WriteLine("Book not found in the list. Please try again.");
                     continue;
                 }
+
                 return isbn;
             }
-            
         }
+
+        //private async Task<string?> SelecteBookISBN(int? storeId = null)
+        //{
+        //    List<Book> books; 
+
+        //    if (storeId.HasValue)
+        //    {
+        //        books = await _db.Inventories
+        //                        //.Include(i=>i.Isbn13Navigation)
+        //                        .Where(i=>i.StoreId==storeId.Value && i.Quantity>0)
+        //                        .Select(i=>i.Isbn13Navigation)
+        //                        .Distinct()
+        //                        .ToListAsync();
+        //    }
+
+        //    else
+        //    {
+        //        books = await _db.Books
+        //                        .Include(b => b.Inventories)
+        //                        .ToListAsync();
+
+        //    }
+
+        //    if(!books.Any())
+        //    {
+        //        Console.WriteLine("No books available.");
+        //        return null;
+        //    }
+        //    while (true)
+        //    {
+        //        Console.WriteLine($"\n=== All Available Titles (Current Stock in Store {storeId}) ===");
+        //        foreach (var book in books)
+        //        {
+        //            int currentQty=book.Inventories.FirstOrDefault(i=>i.StoreId==storeId)?.Quantity ?? 0;
+
+        //            Console.WriteLine($"{book.Isbn13} - {book.Title} [Current:{currentQty}]");
+        //        }
+
+        //        Console.Write("Enter ISBN: ");
+        //        var isbn = Console.ReadLine()?.Trim();
+
+
+        //        if (string.IsNullOrWhiteSpace(isbn))
+        //        {
+        //            Console.WriteLine("ISBN cannot be empty. Please try again.");
+        //            continue;
+        //        }
+        //        if (!books.Any(b => b.Isbn13 == isbn))
+        //        {
+        //            Console.WriteLine("Book not found. Please try again.");
+        //            continue;
+        //        }
+        //        return isbn;
+        //    }
+
+        //}
         public async Task<List<Store>> ListAllStores()
         {
             var stores = await _db.Stores.ToListAsync();
@@ -73,14 +174,15 @@ namespace Bokhandel.Services
                 Console.WriteLine("Store not found.");
                 return;
             }
-            
-            var inventories = await _db.Inventories
-                .Where(i => i.StoreId == storeId)
-                .Include(i => i.Isbn13Navigation)
-                .ToListAsync();
 
-            Console.WriteLine($"=== Inventory for Store: {store.StoreName} ===");
-            if(!inventories.Any())
+            Console.WriteLine($"=== Inventory for Store: {store.StoreName} (ID:{store.StoreId})===");
+
+            var inventories = await _db.Inventories
+                .Where(i => i.StoreId == storeId && i.Quantity > 0)
+                .Include(i => i.Isbn13Navigation)
+                .OrderBy(i => i.Isbn13Navigation.Title)
+                .ToListAsync();
+            if (!inventories.Any())
             {
                 Console.WriteLine("No books in this store.");
                 return;
@@ -91,16 +193,38 @@ namespace Bokhandel.Services
             }
         }
 
-        public async Task AddBookToStore(int storeId)
+        public async Task AddBookToStore(int storeId,BookService bookService, AuthorService authorService)
         {
-            var isbn = await SelecteBookISBN();
-            if(isbn==null)return;
+            Console.WriteLine("=== Add Book to Store ===");
+            Console.Write("Enter ISBN to add: ");
+            string isbn = Console.ReadLine()?.Trim()??"";
+            var bookExists = await _db.Books.AnyAsync(b => b.Isbn13 == isbn);
+            if (!bookExists)
+            {
+                Console.WriteLine($"Book with ISBN {isbn} does not found in store.");
+                Console.Write("Do you want to create it now? (y/n): ");
+                if (Console.ReadLine()?.Trim().ToLower() == "y")
+                {
+                    await bookService.AddNewBook(authorService, isbn);
+                    if(!await _db.Books.AnyAsync(b => b.Isbn13 == isbn))
+                    {
+                        Console.WriteLine("Book creation cancelled. Cannot add to store.");
+                        return;
+                    }
+
+                }
+                else
+                {
+                    return;
+                }
+            }
+            if (isbn==null)return;
 
             Console.Write("Enter quantity to add: ");
 
-            if(!int.TryParse(Console.ReadLine(), out int amount) && amount > 0)
+            if(int.TryParse(Console.ReadLine(), out int amount) && amount > 0)
             {
-                int currentQuantity = await GetCurrentQuantity(storeId, isbn);
+                
                 await UpdateBookQuantity(storeId,isbn,amount);
                 int newQuantity = await GetCurrentQuantity(storeId, isbn);
                 Console.WriteLine($"Added {amount} copies of book {isbn}. New stock: {newQuantity}");
@@ -108,14 +232,15 @@ namespace Bokhandel.Services
             else
             {
                 Console.WriteLine("Invalid amount");
+                return;
             }
 
-                _db.SaveChanges();
+              await  _db.SaveChangesAsync();
             Console.WriteLine("Book added to store!");
         }
         public async Task RemoveBookFromStore(int storeId)
         {
-            var isbn =await SelecteBookISBN();
+            var isbn =await SelecteBookISBN(storeId);
             if (isbn == null) return;
             int currentQty = await GetCurrentQuantity(storeId, isbn);
             if(currentQty==0)
@@ -174,7 +299,7 @@ namespace Bokhandel.Services
                 return;
             }
 
-            var isbn = await SelecteBookISBN();
+            var isbn = await SelecteBookISBN(fromStoreId);
             if (isbn == null) return;
             int sourceQty = await GetCurrentQuantity(fromStoreId, isbn);
             if(sourceQty==0)
