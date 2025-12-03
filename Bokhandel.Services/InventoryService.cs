@@ -152,12 +152,8 @@ namespace Bokhandel.Services
         //}
         public async Task<List<Store>> ListAllStores()
         {
-            var stores = await _db.Stores.ToListAsync();
-            foreach (var store in stores)
-            {
-                Console.WriteLine($"{store.StoreId} - {store.StoreName} - {store.Adress}, {store.City}, {store.PostalCode}");
-            }
-            return stores;
+            
+            return await _db.Stores.ToListAsync();
         }
 
         public async Task<int>GetCurrentQuantity(int storeId,string isbn)
@@ -198,17 +194,19 @@ namespace Bokhandel.Services
             Console.WriteLine("=== Add Book to Store ===");
             Console.Write("Enter ISBN to add: ");
             string isbn = Console.ReadLine()?.Trim()??"";
-            var bookExists = await _db.Books.AnyAsync(b => b.Isbn13 == isbn);
-            if (!bookExists)
+            var bookExists = await _db.Books.FindAsync(isbn);
+            if (bookExists == null)
             {
                 Console.WriteLine($"Book with ISBN {isbn} does not found in store.");
                 Console.Write("Do you want to create it now? (y/n): ");
                 if (Console.ReadLine()?.Trim().ToLower() == "y")
                 {
                     await bookService.AddNewBook(authorService, isbn);
-                    if(!await _db.Books.AnyAsync(b => b.Isbn13 == isbn))
+                    bookExists = await _db.Books.FindAsync(isbn);
+
+                    if (bookExists==null)
                     {
-                        Console.WriteLine("Book creation cancelled. Cannot add to store.");
+                        Console.WriteLine("Book creation cancelled.");
                         return;
                     }
 
@@ -218,16 +216,18 @@ namespace Bokhandel.Services
                     return;
                 }
             }
-            if (isbn==null)return;
+            string title = bookExists.Title;
+            //if (isbn==null)return;
 
-            Console.Write("Enter quantity to add: ");
+            Console.Write($"Enter quantity of '{title}' to add: ");
 
             if(int.TryParse(Console.ReadLine(), out int amount) && amount > 0)
             {
                 
                 await UpdateBookQuantity(storeId,isbn,amount);
+                await _db.SaveChangesAsync();
                 int newQuantity = await GetCurrentQuantity(storeId, isbn);
-                Console.WriteLine($"Added {amount} copies of book {isbn}. New stock: {newQuantity}");
+                Console.WriteLine($"Successfully added {amount} copies of book '{title}' - [{isbn}]. New stock: {newQuantity}");
             }
             else
             {
@@ -235,8 +235,8 @@ namespace Bokhandel.Services
                 return;
             }
 
-              await  _db.SaveChangesAsync();
-            Console.WriteLine("Book added to store!");
+              
+        
         }
         public async Task RemoveBookFromStore(int storeId)
         {
@@ -309,7 +309,7 @@ namespace Bokhandel.Services
             }
 
             Console.Write("Enter quantity to transfer: ");
-            if(!int.TryParse(Console.ReadLine(), out int amount) && amount > 0)
+            if(int.TryParse(Console.ReadLine(), out int amount) && amount > 0)
             {
                 
                 if(sourceQty < amount)
@@ -319,6 +319,7 @@ namespace Bokhandel.Services
                 }
                 int newSourceQty = await UpdateBookQuantity(fromStoreId, isbn, -amount);
                 int newDestQty= await UpdateBookQuantity(toStoreId, isbn, amount);
+                await _db.SaveChangesAsync();
                 
                 Console.WriteLine($"Transferred {amount} copies of book {isbn} from store {fromStoreId} to store {toStoreId}.");
                 Console.WriteLine($"Remining stock in source store: {newSourceQty}");

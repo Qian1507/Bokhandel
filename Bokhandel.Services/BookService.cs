@@ -134,7 +134,7 @@ namespace Bokhandel.Services
             };
             _db.Books.Add(book);
             await _db.SaveChangesAsync();
-            Console.WriteLine($"Book '{book.Title}' added successfully.");
+            //Console.WriteLine($"Book '{book.Title}' added successfully.");
 
         }
         public async Task EditBook(AuthorService authorService)
@@ -228,7 +228,7 @@ namespace Bokhandel.Services
             await ListAllBooks();
             Console.Write("\nEnter ISBN of the book to delete: ");
             string? isbn= Console.ReadLine()?.Trim();
-            if (!string.IsNullOrWhiteSpace(isbn))
+            if (string.IsNullOrWhiteSpace(isbn))
             {
                 Console.WriteLine("ISBN cannot be empty.");
                 return;

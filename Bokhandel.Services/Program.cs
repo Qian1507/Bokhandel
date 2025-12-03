@@ -165,6 +165,7 @@ namespace Bokhandel.Services
                     if (selectedStore != null)
                     {
                         Console.WriteLine($"Selected Store: {selectedStore.StoreName}");
+                        Console.WriteLine("Press any key to continue...");
                         Console.ReadKey();
                         return selectedStore.StoreId;
                     }
