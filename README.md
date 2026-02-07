@@ -39,10 +39,10 @@ Since this project was built using a **Database First** approach, you need to in
     ```
 
 2.  **Set up the Database**
-    - Locate the `database_schema.sql` file in the root directory.
+    - Locate the `script.sql` file in the root directory.
     - Open **SQL Server Management Studio (SSMS)**.
     - Create a new database named `Bokhandel`.
-    - Run the script `setup_db.sql` against this new database to create all tables (Books, Authors, Orders, etc.).
+    - Run the script `script.sql` against this new database to create all tables (Books, Authors, Orders, etc.).
 
 3.  **Configure Connection**
     - Open `Bokhandel/Models/BokhandelContext.cs`.
